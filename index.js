@@ -13,23 +13,25 @@ function mapNodes (nodes, f) {
 function view (state) {
   return (
     svg({attrs: {width: innerWidth, height: innerHeight}}, [
-      ...mapNodes(state.nodes, node =>
-        h('circle', {attrs: {key: node.label, cx: node.position.x, cy: node.position.y, r: 20}})
-      ),
-
       ...state.links.map(link =>
         h('line', {
+          key: link.to + link.from,
+
           attrs: {
             x1: state.nodes[link.from].position.x,
             y1: state.nodes[link.from].position.y,
             x2: state.nodes[link.to].position.x,
             y2: state.nodes[link.to].position.y,
 
-            stroke: 'black',
+            stroke: 'mintcream',
             'stroke-width': '2'
           }
         })
-      )
+      ),
+
+      ...mapNodes(state.nodes, node =>
+        h('circle', {key: node.label, attrs: {key: node.label, cx: node.position.x, cy: node.position.y, r: 20, fill: 'skyblue'}})
+      ),
     ])
   );
 }
