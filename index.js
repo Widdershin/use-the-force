@@ -2,6 +2,7 @@ import {run} from '@cycle/xstream-run';
 import {makeDOMDriver, svg, h} from '@cycle/dom';
 import xs from 'xstream';
 import timeDriver from './drivers/time-driver';
+import mouseDriver from './drivers/mouse-driver';
 
 function mapNodes (nodes, f) {
   return Object.keys(nodes).map(key => f(nodes[key]));
@@ -11,7 +12,7 @@ function view (state) {
   return (
     svg({attrs: {width: innerWidth, height: innerHeight}}, [
       ...mapNodes(state.nodes, node =>
-        h('circle', {attrs: {cx: node.position.x, cy: node.position.y, r: 20}})
+        h('circle', {attrs: {key: node.label, cx: node.position.x, cy: node.position.y, r: 20}})
       ),
 
       ...state.links.map(link =>
@@ -73,13 +74,37 @@ function update (delta, state) {
 
       const normalizedDistance = distance.normalize();
 
-      const resistanceMultiplier = (400 - distanceInPixels) / 200;
+      const resistanceMultiplier = (300 - distanceInPixels) / 150;
 
       const resistanceForce = normalizedDistance.times(resistanceMultiplier);
 
       otherNode.position = otherNode.position.minus(resistanceForce);
     });
   });
+
+  return state;
+}
+
+function startDragging (nodeEl, state) {
+  state.dragging = nodeEl.attributes.key.value;
+
+  console.log(state.dragging);
+
+  return state;
+}
+
+function stopDragging (state) {
+  state.dragging = null;
+
+  return state;
+}
+
+function drag (position, state) {
+  if (!state.dragging) {
+    return state;
+  }
+
+  state.nodes[state.dragging].position = Vector(position);
 
   return state;
 }
@@ -138,32 +163,52 @@ function Node (label, position) {
 
 const center = Vector({x: innerWidth / 2, y: innerHeight / 2})
 
-function main ({Time}) {
+function main ({Time, DOM, Mouse}) {
   const nodes = {
     a: Node('a', center.plus({x: 2, y: 0})),
     b: Node('b', center.minus({x: 2, y: 0})),
     c: Node('c', center.plus({x: 0, y: 1})),
     d: Node('d', center.minus({x: 0, y: 1})),
+    e: Node('e', center.minus({x: 1, y: 2}))
   };
 
   const links = [
     {from: 'a', to: 'b'},
     {from: 'b', to: 'c'},
     {from: 'a', to: 'c'},
-    {from: 'a', to: 'd'}
+    {from: 'a', to: 'd'},
+    {from: 'b', to: 'e'}
   ];
 
   const initialState = {
     nodes,
-    links
+    links,
+    dragging: null
   };
+
+  const startDragging$ = DOM
+    .select('circle')
+    .events('mousedown')
+    .map(ev => (state) => startDragging(ev.target, state));
+
+  const stopDragging$ = Mouse
+    .ups()
+    .map(ev => stopDragging);
+
+  const drag$ = Mouse
+    .positions()
+    .map(position => (state) => drag(position, state));
 
   const update$ = Time
     .map(({delta}) => delta / 1000 / 60)
     .map(delta => (state) => update(delta, state));
 
   const reducer$ = xs.merge(
-    update$
+    update$,
+
+    startDragging$,
+    stopDragging$,
+    drag$
   );
 
   const state$ = reducer$.fold(applyReducer, initialState);
@@ -175,7 +220,8 @@ function main ({Time}) {
 
 const drivers = {
   DOM: makeDOMDriver('.app'),
-  Time: timeDriver
+  Time: timeDriver,
+  Mouse: mouseDriver
 };
 
 run(main, drivers);
