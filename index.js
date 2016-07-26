@@ -1,8 +1,10 @@
 import {run} from '@cycle/xstream-run';
 import {makeDOMDriver, svg, h} from '@cycle/dom';
 import xs from 'xstream';
+
 import timeDriver from './drivers/time-driver';
 import mouseDriver from './drivers/mouse-driver';
+import Vector from './vector';
 
 function mapNodes (nodes, f) {
   return Object.keys(nodes).map(key => f(nodes[key]));
@@ -109,51 +111,6 @@ function drag (position, state) {
   return state;
 }
 
-function Vector({x, y}) {
-  return {
-    x,
-    y,
-
-    plus (other) {
-      return Vector({
-        x: x + other.x,
-        y: y + other.y
-      });
-    },
-
-    minus (other) {
-      return Vector({
-        x: x - other.x,
-        y: y - other.y
-      });
-    },
-
-    times (n) {
-      return Vector({
-        x: x * n,
-        y: y * n
-      });
-    },
-
-    normalize () {
-      const length = Math.abs(x) + Math.abs(y);
-
-      if (length === 0) {
-        return Vector({x: 0, y: 0});
-      }
-
-      return Vector({
-        x: x / length,
-        y: y / length
-      });
-    },
-
-    pythag () {
-      return Math.abs(Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2)));
-    }
-  };
-}
-
 function Node (label, position) {
   return {
     label,
@@ -161,7 +118,7 @@ function Node (label, position) {
   };
 }
 
-const center = Vector({x: innerWidth / 2, y: innerHeight / 2})
+const center = Vector({x: innerWidth / 2, y: innerHeight / 2});
 
 function main ({Time, DOM, Mouse}) {
   const nodes = {
