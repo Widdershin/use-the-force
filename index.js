@@ -34,9 +34,30 @@ function renderLinkBeingCreated (state, mousePosition) {
   ];
 }
 
-function view ([state, mousePosition]) {
+function view ([state, mousePosition, hoverNode]) {
   return (
     svg({attrs: {width: innerWidth, height: innerHeight}}, [
+      h('defs', [
+        h('marker#triangle', {
+          attrs: {
+            id: 'triangle',
+            viewBox: '0 0 10 10',
+            refX: '40',
+            refY: '5',
+            markerWidth: '6',
+            markerHeight: '4',
+            markerUnits: 'strokeWidth',
+            orient: 'auto'
+          }
+        }, [h('path', {attrs: {fill: 'lightgreen', stroke: 'lightgreen', d: 'M 0 0 L 10 5 L 0 10 z'}})])
+      ]),
+
+      h('text', {attrs: {
+        x: 10,
+        y: 70,
+        style: 'stroke: white; font-size: 44pt; fill: white;'
+      }}, hoverNode),
+
       ...state.links.map(link =>
         h('line', {
           key: 'link' + link.to + link.from,
@@ -47,8 +68,10 @@ function view ([state, mousePosition]) {
             x2: state.nodes[link.to].position.x.toFixed(1),
             y2: state.nodes[link.to].position.y.toFixed(1),
 
+            'marker-end': 'url(#triangle)',
+
             stroke: 'mintcream',
-            'stroke-width': '2'
+            'stroke-width': '3'
           }
         })
       ),
@@ -194,8 +217,11 @@ function Node (label, position) {
 
 let nodeKey = 0;
 
-function makeNode(position, nodes) {
-  const key = (nodeKey++).toString();
+function makeNode(position, nodes, key=null) {
+  if (!key) {
+    key = (nodeKey++).toString();
+  }
+
   const newNode = Node(key, position);
 
   return {
@@ -205,23 +231,15 @@ function makeNode(position, nodes) {
   }
 }
 
+const nodes = ['a', 'b', 'c']
+  .reduce((nodes, nodeName) => makeNode(center.plus({x: Math.random(), y: Math.random()}), nodes, nodeName), {});
+
+const links = [
+  {from: 'a', to: 'b'},
+  {from: 'a', to: 'c'}
+];
+
 function main ({Time, DOM, Mouse}) {
-  const nodes = {
-    a: Node('a', center.plus({x: 2, y: 0})),
-    b: Node('b', center.minus({x: 2, y: 0})),
-    c: Node('c', center.plus({x: 0, y: 1})),
-    d: Node('d', center.minus({x: 0, y: 1})),
-    e: Node('e', center.minus({x: 1, y: 2}))
-  };
-
-  const links = [
-    {from: 'a', to: 'b'},
-    {from: 'b', to: 'c'},
-    {from: 'a', to: 'c'},
-    {from: 'a', to: 'd'},
-    {from: 'b', to: 'e'}
-  ];
-
   const initialState = {
     nodes,
     links,
@@ -279,8 +297,14 @@ function main ({Time, DOM, Mouse}) {
 
   const state$ = reducer$.fold(applyReducer, initialState);
 
+  const hoverNode$ = DOM
+    .select('circle')
+    .events('mouseover')
+    .map(ev => ev.target.attributes.key.value)
+    .startWith('');
+
   return {
-    DOM: xs.combine(state$, mousePosition$).map(view)
+    DOM: xs.combine(state$, mousePosition$, hoverNode$).map(view)
   };
 }
 
