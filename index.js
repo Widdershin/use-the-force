@@ -6,22 +6,46 @@ import timeDriver from './drivers/time-driver';
 import mouseDriver from './drivers/mouse-driver';
 import Vector from './vector';
 
+const center = Vector({x: innerWidth / 2, y: innerHeight / 2});
+
+window.paused = false;
+
 function mapNodes (nodes, f) {
   return Object.keys(nodes).map(key => f(nodes[key]));
 }
 
-function view (state) {
+function renderLinkBeingCreated (state, mousePosition) {
+  if (!state.addingLinkFrom) { return [] };
+
+  const originNodePosition = state.nodes[state.addingLinkFrom].position;
+
+  return [
+    h('line', {
+      attrs: {
+        x1: originNodePosition.x.toFixed(1),
+        y1: originNodePosition.y.toFixed(1),
+        x2: mousePosition.x.toFixed(1),
+        y2: mousePosition.y.toFixed(1),
+
+        stroke: 'rebeccapurple',
+        'stroke-width': '3'
+      }
+    })
+  ];
+}
+
+function view ([state, mousePosition]) {
   return (
     svg({attrs: {width: innerWidth, height: innerHeight}}, [
       ...state.links.map(link =>
         h('line', {
-          key: link.to + link.from,
+          key: 'link' + link.to + link.from,
 
           attrs: {
-            x1: state.nodes[link.from].position.x,
-            y1: state.nodes[link.from].position.y,
-            x2: state.nodes[link.to].position.x,
-            y2: state.nodes[link.to].position.y,
+            x1: state.nodes[link.from].position.x.toFixed(1),
+            y1: state.nodes[link.from].position.y.toFixed(1),
+            x2: state.nodes[link.to].position.x.toFixed(1),
+            y2: state.nodes[link.to].position.y.toFixed(1),
 
             stroke: 'mintcream',
             'stroke-width': '2'
@@ -29,9 +53,20 @@ function view (state) {
         })
       ),
 
+      ...renderLinkBeingCreated(state, mousePosition),
+
       ...mapNodes(state.nodes, node =>
-        h('circle', {key: node.label, attrs: {key: node.label, cx: node.position.x, cy: node.position.y, r: 20, fill: 'skyblue'}})
-      ),
+        h('circle', {
+          key: node.label,
+          attrs: {
+            key: node.label,
+            cx: node.position.x.toFixed(1),
+            cy: node.position.y.toFixed(1),
+            r: 20,
+            fill: 'skyblue'
+          }
+        })
+      )
     ])
   );
 }
@@ -50,21 +85,32 @@ function update (delta, state) {
   //
   //  For each node
   //    Apply resisting force to each other node
+  //
+  if (window.paused) {
+    return state;
+  }
 
   state.links.forEach(link => {
     const fromNode = state.nodes[link.from];
     const toNode = state.nodes[link.to];
 
     const distance = fromNode.position.minus(toNode.position);
-
     const distanceInPixels = distance.pythag();
 
     const compressionMultiplier = Math.max(1, distanceInPixels / 100);
 
-    const normalizedDistance = distance.normalize().times(compressionMultiplier);
+    const attractionForce = distance
+      .normalize()
+      .times(compressionMultiplier)
+      .times(delta);
 
-    fromNode.position = fromNode.position.minus(normalizedDistance);
-    toNode.position = toNode.position.plus(normalizedDistance);
+    if (state.dragging !== fromNode.label) {
+      fromNode.position = fromNode.position.minus(attractionForce);
+    }
+
+    if (state.dragging !== toNode.label) {
+      toNode.position = toNode.position.plus(attractionForce);
+    }
   });
 
   mapNodes(state.nodes, node => {
@@ -76,23 +122,35 @@ function update (delta, state) {
       const distance = node.position.minus(otherNode.position);
       const distanceInPixels = distance.pythag();
 
-      const normalizedDistance = distance.normalize();
+      const resistanceMultiplier = Math.max(0, (300 - distanceInPixels) / 150);
 
-      const resistanceMultiplier = (300 - distanceInPixels) / 150;
+      const resistanceForce = distance
+        .normalize()
+        .times(resistanceMultiplier)
+        .times(delta);
 
-      const resistanceForce = normalizedDistance.times(resistanceMultiplier);
-
-      otherNode.position = otherNode.position.minus(resistanceForce);
+      if (state.dragging !== otherNode.label) {
+        otherNode.position = otherNode.position.minus(resistanceForce);
+      }
     });
   });
 
   return state;
 }
 
-function startDragging (nodeEl, state) {
-  state.dragging = nodeEl.attributes.key.value;
+function startDragging (nodeElement, state) {
+  // TODO - break this into two separate reducers
+  const nodeKey = nodeElement.attributes.key.value;
 
-  console.log(state.dragging);
+  if (state.addingLinkFrom) {
+    if (state.addingLinkFrom !== nodeKey) {
+      state.links.push({from: state.addingLinkFrom, to: nodeKey});
+    }
+
+    state.addingLinkFrom = null;
+  }
+
+  state.dragging = nodeKey;
 
   return state;
 }
@@ -113,6 +171,20 @@ function drag (position, state) {
   return state;
 }
 
+function placeNode (position, state) {
+  return {
+    ...state,
+
+    nodes: makeNode(position, state.nodes)
+  };
+}
+
+function startAddingLink (nodeElement, state) {
+  state.addingLinkFrom = nodeElement.attributes.key.value;
+
+  return state;
+}
+
 function Node (label, position) {
   return {
     label,
@@ -120,7 +192,18 @@ function Node (label, position) {
   };
 }
 
-const center = Vector({x: innerWidth / 2, y: innerHeight / 2});
+let nodeKey = 0;
+
+function makeNode(position, nodes) {
+  const key = (nodeKey++).toString();
+  const newNode = Node(key, position);
+
+  return {
+    ...nodes,
+
+    [key]: newNode
+  }
+}
 
 function main ({Time, DOM, Mouse}) {
   const nodes = {
@@ -142,8 +225,28 @@ function main ({Time, DOM, Mouse}) {
   const initialState = {
     nodes,
     links,
-    dragging: null
+    dragging: null,
+    addingLinkFrom: null
   };
+
+  const mousePosition$ = Mouse.positions();
+
+  const dblClick$ = DOM
+    .select('svg')
+    .events('dblclick');
+
+  const backgroundDblClick$ = dblClick$
+    .filter(ev => ev.target.tagName === 'svg');
+
+  const nodeDblClick$ = dblClick$
+    .filter(ev => ev.target.tagName === 'circle');
+
+  const placeNode$ =  mousePosition$
+    .map(position => backgroundDblClick$.mapTo((state) => placeNode(position, state)))
+    .flatten();
+
+  const startAddingLink$ = nodeDblClick$
+    .map(ev => (state) => startAddingLink(ev.target, state));
 
   const startDragging$ = DOM
     .select('circle')
@@ -154,12 +257,12 @@ function main ({Time, DOM, Mouse}) {
     .ups()
     .map(ev => stopDragging);
 
-  const drag$ = Mouse
-    .positions()
+  const drag$ = mousePosition$
     .map(position => (state) => drag(position, state));
 
   const update$ = Time
-    .map(({delta}) => delta / 1000 / 60)
+    .map(({delta}) => delta / (1000 / 60))
+    .filter(delta => delta > 0 && delta < 10) // if you switch tab, you get huge deltas
     .map(delta => (state) => update(delta, state));
 
   const reducer$ = xs.merge(
@@ -167,13 +270,17 @@ function main ({Time, DOM, Mouse}) {
 
     startDragging$,
     stopDragging$,
-    drag$
+    drag$,
+
+    placeNode$,
+
+    startAddingLink$
   );
 
   const state$ = reducer$.fold(applyReducer, initialState);
 
   return {
-    DOM: state$.map(view)
+    DOM: xs.combine(state$, mousePosition$).map(view)
   };
 }
 
