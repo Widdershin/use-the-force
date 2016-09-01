@@ -24,6 +24,14 @@ export default function Vector ({x, y}) {
       });
     },
 
+    update (fields) {
+      return Vector({
+        x,
+        y,
+        ...fields
+      });
+    },
+
     normalize () {
       const length = Math.abs(x) + Math.abs(y);
 

@@ -1,5 +1,5 @@
 import {run} from '@cycle/xstream-run';
-import {makeDOMDriver, svg, h} from '@cycle/dom';
+import {makeDOMDriver, svg, h, div, pre, input} from '@cycle/dom';
 import xs from 'xstream';
 
 import timeDriver from './drivers/time-driver';
@@ -49,7 +49,7 @@ function view ([state, mousePosition, hoverNode]) {
             markerUnits: 'strokeWidth',
             orient: 'auto'
           }
-        }, [h('path', {attrs: {fill: 'lightgreen', stroke: 'lightgreen', d: 'M 0 0 L 10 5 L 0 10 z'}})])
+        }, [h('path', {attrs: {fill: 'magenta', stroke: 'magenta', d: 'M 0 0 L 10 5 L 0 10 z'}})])
       ]),
 
       h('text', {attrs: {
@@ -79,16 +79,28 @@ function view ([state, mousePosition, hoverNode]) {
       ...renderLinkBeingCreated(state, mousePosition),
 
       ...mapNodes(state.nodes, node =>
-        h('circle', {
-          key: node.label,
+        h('foreignObject', {
           attrs: {
-            key: node.label,
-            cx: node.position.x.toFixed(1),
-            cy: node.position.y.toFixed(1),
-            r: 20,
-            fill: 'skyblue'
+            x: (node.position.x - 50).toFixed(0),
+            y: (node.position.y - 5).toFixed(0),
+            width: Math.max(100, node.code.length * 8),
+            height: 100
           }
-        })
+        }, [
+          div('.draggable', {
+            attrs: {
+              key: node.key,
+              xmlns: "http://www.w3.org/1999/xhtml"
+            },
+            style: {
+              background: 'skyblue'
+            }
+          }, [
+            state.editingNode === node.key
+              ? input({attrs: {value: node.code}})
+              : pre('.code', node.code)
+          ])
+        ])
       )
     ])
   );
@@ -127,11 +139,11 @@ function update (delta, state) {
       .times(compressionMultiplier)
       .times(delta);
 
-    if (state.dragging !== fromNode.label) {
+    if (state.dragging !== fromNode.label && state.editingNode !== fromNode.label) {
       fromNode.position = fromNode.position.minus(attractionForce);
     }
 
-    if (state.dragging !== toNode.label) {
+    if (state.dragging !== toNode.label && state.editingNode !== toNode.label) {
       toNode.position = toNode.position.plus(attractionForce);
     }
   });
@@ -152,10 +164,20 @@ function update (delta, state) {
         .times(resistanceMultiplier)
         .times(delta);
 
-      if (state.dragging !== otherNode.label) {
+      if (state.dragging !== otherNode.label && state.editingNode !== otherNode.label) {
         otherNode.position = otherNode.position.minus(resistanceForce);
       }
     });
+  });
+
+  mapNodes(state.nodes, node => {
+    if (node.isInput) {
+      node.position = node.position.update({y: 50})
+    }
+
+    if (node.isOutput) {
+      node.position = node.position.update({y: innerHeight - 50})
+    }
   });
 
   return state;
@@ -176,6 +198,40 @@ function startDragging (nodeElement, state) {
   state.dragging = nodeKey;
 
   return state;
+}
+
+function startEditing (nodeElement, state) {
+  const nodeKey = nodeElement.attributes.key.value;
+
+  return {
+    ...state,
+
+    editingNode: nodeKey
+  };
+}
+
+function stopEditing (newNodeText, state) {
+  if (!state.editingNode) {
+    return state;
+  }
+
+  const node = state.nodes[state.editingNode];
+
+  return {
+    ...state,
+
+    editingNode: null,
+
+    nodes: {
+      ...state.nodes,
+
+      [node.key]: {
+        ...node,
+
+        code: newNodeText
+      }
+    }
+  }
 }
 
 function stopDragging (state) {
@@ -208,40 +264,54 @@ function startAddingLink (nodeElement, state) {
   return state;
 }
 
-function Node (label, position) {
+function Node (label, position, {isInput, isOutput}) {
   return {
     label,
-    position: Vector(position)
+    key: label,
+    code: label,
+    position: Vector(position),
+
+    isInput: !!isInput,
+    isOutput: !!isOutput
   };
 }
 
 let nodeKey = 0;
 
-function makeNode(position, nodes, key=null) {
+function makeNode(position, nodes, {key, isInput, isOutput} = {}) {
   if (!key) {
     key = (nodeKey++).toString();
   }
 
-  const newNode = Node(key, position);
+  const newNode = Node(key, position, {isInput, isOutput});
 
   return {
     ...nodes,
 
     [key]: newNode
-  }
+  };
 }
 
-const nodes = ['a', 'b', 'c']
-  .reduce((nodes, nodeName) => makeNode(center.plus({x: Math.random(), y: Math.random()}), nodes, nodeName), {});
+const nodes = ['DOM']
+  .reduce((nodes, nodeName) =>
+      makeNode(
+        center.plus({x: Math.random(), y: Math.random()}),
+        makeNode(
+          center.plus({x: Math.random(), y: Math.random()}),
+          nodes,
+          {key: nodeName, isInput: true}
+        ),
+        {key: 'v ' + nodeName + ' v', isOutput: true}
+      ),
+    {});
 
 const links = [
-  {from: 'a', to: 'b'},
-  {from: 'a', to: 'c'}
 ];
 
 function main ({Time, DOM, Mouse}) {
   const initialState = {
     nodes,
+    editingNode: null,
     links,
     dragging: null,
     addingLinkFrom: null
@@ -256,20 +326,21 @@ function main ({Time, DOM, Mouse}) {
   const backgroundDblClick$ = dblClick$
     .filter(ev => ev.target.tagName === 'svg');
 
-  const nodeDblClick$ = dblClick$
-    .filter(ev => ev.target.tagName === 'circle');
+  const nodeDblClick$ = DOM
+    .select('.draggable')
+    .events('dblclick');
 
   const placeNode$ =  mousePosition$
     .map(position => backgroundDblClick$.mapTo((state) => placeNode(position, state)))
     .flatten();
 
   const startAddingLink$ = nodeDblClick$
-    .map(ev => (state) => startAddingLink(ev.target, state));
+    .map(ev => (state) => startAddingLink(ev.currentTarget, state));
 
   const startDragging$ = DOM
-    .select('circle')
+    .select('.draggable')
     .events('mousedown')
-    .map(ev => (state) => startDragging(ev.target, state));
+    .map(ev => (state) => startDragging(ev.currentTarget, state));
 
   const stopDragging$ = Mouse
     .ups()
@@ -277,6 +348,17 @@ function main ({Time, DOM, Mouse}) {
 
   const drag$ = mousePosition$
     .map(position => (state) => drag(position, state));
+
+  const editNode$ = DOM
+    .select('.draggable')
+    .events('click')
+    .filter(event => event.metaKey)
+    .map(event => (state) => startEditing(event.currentTarget, state));
+
+  const saveNodeEdit$ = DOM
+    .select('.draggable input')
+    .events('change')
+    .map(event => (state) => stopEditing(event.target.value, state));
 
   const update$ = Time
     .map(({delta}) => delta / (1000 / 60))
@@ -291,6 +373,9 @@ function main ({Time, DOM, Mouse}) {
     drag$,
 
     placeNode$,
+
+    editNode$,
+    saveNodeEdit$,
 
     startAddingLink$
   );
