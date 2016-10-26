@@ -53,6 +53,27 @@ function view ([state, mousePosition, hoverNode]) {
       ]),
 
       h('text', {attrs: {
+        x: innerWidth - 20,
+        y: 30,
+        'text-anchor': 'end',
+        style: 'font-size: 18; font-family: sans-serif; fill: white;'
+      }}, 'Double click empty space to add a node'),
+
+      h('text', {attrs: {
+        x: innerWidth - 20,
+        y: 53,
+        'text-anchor': 'end',
+        style: 'font-size: 18; font-family: sans-serif; fill: white;'
+      }}, 'Double click on a node to start adding a link'),
+
+      h('text', {attrs: {
+        x: innerWidth - 20,
+        y: 76,
+        'text-anchor': 'end',
+        style: 'font-size: 18; font-family: sans-serif; fill: white;'
+      }}, 'Click and drag on a node to move it'),
+
+      h('text', {attrs: {
         x: 10,
         y: 70,
         style: 'stroke: white; font-size: 44pt; fill: white;'
