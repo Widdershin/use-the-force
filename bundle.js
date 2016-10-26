@@ -153,6 +153,21 @@ function view(_ref) {
       orient: 'auto'
     }
   }, [(0, _dom.h)('path', { attrs: { fill: 'lightgreen', stroke: 'lightgreen', d: 'M 0 0 L 10 5 L 0 10 z' } })])]), (0, _dom.h)('text', { attrs: {
+      x: innerWidth - 20,
+      y: 30,
+      'text-anchor': 'end',
+      style: 'font-size: 18; font-family: sans-serif; fill: white;'
+    } }, 'Double click empty space to add a node'), (0, _dom.h)('text', { attrs: {
+      x: innerWidth - 20,
+      y: 53,
+      'text-anchor': 'end',
+      style: 'font-size: 18; font-family: sans-serif; fill: white;'
+    } }, 'Double click on a node to start adding a link'), (0, _dom.h)('text', { attrs: {
+      x: innerWidth - 20,
+      y: 76,
+      'text-anchor': 'end',
+      style: 'font-size: 18; font-family: sans-serif; fill: white;'
+    } }, 'Click and drag on a node to move it'), (0, _dom.h)('text', { attrs: {
       x: 10,
       y: 70,
       style: 'stroke: white; font-size: 44pt; fill: white;'
